@@ -15,12 +15,107 @@ STOPWORDS = 'a able about across after all almost also am among an and any are a
 CUTOFF = 10
 
 
+def write_html(data, argz):
+    output = """
+<html>
+    <head>
+        <title>Word frequency distribution</title>
+        <style>
+            td { vertical-align: top; padding-bottom: 1rem }
+        </style>
+    </head>
+    <body>
+        <h1>Word Frequency Distribution</h1>
+        <h3>Document path: %s</h3>
+        <table>
+            <thead>
+                <tr><th>Word(total occurrences)</th><th>Documents</th><th>Sentences containing the word</th></tr>
+            </thead>
+            <tbody>""" % argz.path
+    for word_count, filenames, excerpts in struct_data:
+        output += '<tr><td>%s</td><td>%s</td><td>%s</td></tr>\n' % (
+            word_count, filenames, '\n'.join(['<p>%s</p>' % p for p in excerpts]
+                                             ))
+    output += """
+            </tbody>
+        </table>
+    </body>
+</html>
+    """
+    with open(argz.output, 'w') as f:
+        f.write(output)
+    print('Wrote %s' % argz.output)
+
+
+def write_pdf(data, argz):
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.units import inch
+    from reportlab.lib import colors
+    styles = getSampleStyleSheet()
+
+    def nthPage(canvas, doc):
+        pass
+        # canvas.saveState()
+
+    fn = argz.output.replace('.html', '.pdf')
+    doc = SimpleDocTemplate(fn)
+    Story = []  # [Spacer(1, 2 * inch)]
+    styleH1 = styles['Heading1']
+    Story.append(Paragraph('Word Frequency distribution', styleH1))
+
+    style = styles["Normal"]
+    p = Paragraph('Path: %s' % argz.path, style)
+    Story.append(p)
+    Story.append(Spacer(1, 0.2 * inch))
+
+    GRP = 3
+
+    list_style = TableStyle(
+        [('LINEABOVE', (0, 0), (-1, -1), 1, colors.grey),
+         # ('LINEBELOW', (0, 0), (-1, -1), 1, colors.grey),
+         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+         ('ALIGN', (1, 0), (-1, -1), 'LEFT'),
+         ])
+    # table
+    table_data = [
+        [Paragraph('Word (total occurrences)', style), Paragraph('Documents', style),
+         Paragraph('Sentences containing the word', style)]
+                  ]
+    l = 0
+    for word_counts, filenames, excerpts in data:
+        rows = []
+        j = 0
+        while j < len(excerpts):
+            idx = min(j+GRP, len(excerpts))
+            ps = [Paragraph(x, style) for x in excerpts[j:idx]]
+            j += GRP
+            if not len(rows):
+                rows.append([Paragraph('<b>%s</b>' % word_counts, style),
+                             # [Paragraph(fname,  style) for fname in filenames.split(',')],
+                             Paragraph(filenames, style),
+                             ps])
+            else:
+                rows.append(['', '', ps])
+                # rows.append([Paragraph("%s <br /><i>(cont'd)</i>" % word_counts, style), '', ps])
+        k = len(rows)
+        # list_style.add('SPAN', (l+1, 0), (l + 1+ k, 1))
+        l += k
+        table_data.extend(rows)
+    Story.append(Table(table_data, colWidths=(100, 100, 300), style=list_style))
+    Story.append(Spacer(1, 0.2 * inch))
+
+    doc.build(Story, onFirstPage=nthPage, onLaterPages=nthPage)
+    print('Wrote %s' % fn)
+
+
 def text2words(text):
     txt = text.lower()
     txt = txt.replace("'s", '')
     # txt = re.sub(r'[^\w\s\r\n]','', txt)
-    txt = re.sub(r'[^\w\s]','', txt)
+    txt = re.sub(r'[^\w\s]', '', txt)
     return txt.split()
+
 
 def freq_dist(txt, ignore_list=None):
     _word_counts = defaultdict(int)
@@ -77,7 +172,6 @@ def process_path(pth, cutoff=CUTOFF, ignore_list=None):
     return output
 
 
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Calculate word frequency distribution from text files in a named folder')
@@ -90,38 +184,22 @@ if __name__ == '__main__':
                         help='Words to ignore')
     parser.add_argument('-o', '--output', dest='output', type=str, default='freq_dist.html',
                         help='HTML file name')
+    parser.add_argument('-p', '--pdf', dest='pdf', action='store_true',
+                        help='generate freq_dist.pdf instead')
 
     args = parser.parse_args()
     if os.path.isdir(args.path):
         result = process_path(args.path, cutoff=args.cutoff, ignore_list=args.ignore_list)
-    output = """
-    <html>
-        <head>
-            <title>Word frequency distribution</title>
-            <style>
-                td { vertical-align: top }
-            </style>
-        </head>
-        <body>
-        <h1>Word Frequency Distribution</h1>
-        <h3>Document path: %s</h3>
-        <table>
-            <thead>
-                <tr><th>Word(total occurrences)</th><th>Documents</th><th>Sentences containing the word</th></tr>
-            </thead>
-            <tbody>""" % args.path
+    else:
+        raise ValueError('You must must declare a folder path')
+
+    struct_data = []
     for w, c, docs, xcerpts in result:
-        output += '<tr><td>%s (%s)</td><td>%s</td><td>%s</td></tr>\n' % (
-            w.title(), c, ', '.join(docs), '\n'.join(['<p>%s</p>' % p for p in xcerpts])
+        struct_data.append(
+            ["%s (%d)" % (w.title(), c), ', '.join(docs), xcerpts]
         )
-    output += """
-    </tbody>
-    </table>
-    </body>
-    </html>
-    """
-    with open(args.output, 'w') as f:
-        f.write(output)
-    print('Wrote %s' % args.output)
 
-
+    if args.pdf:
+        write_pdf(struct_data, args)
+    else:
+        write_html(struct_data, args)
