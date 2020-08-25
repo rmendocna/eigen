@@ -2,6 +2,7 @@ from collections import defaultdict
 import argparse
 import os
 import re
+import sys
 
 
 # http://xpo6.com/download-stop-word-list/  2020-08-23
@@ -48,7 +49,13 @@ def write_html(data, argz):
 
 
 def write_pdf(data, argz):
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    try:
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    except ImportError:
+        sys.stderr.write("\n!! Please install reportlab toolkit by entering \n\n     `pip install reportlab`\n\n")
+        write_html(data, args)
+        return
+
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.lib.units import inch
     from reportlab.lib import colors
